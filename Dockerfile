@@ -21,4 +21,5 @@ COPY . /code/
 EXPOSE 8000
 
 # Define the command to run the app using gunicorn
+# django run as a python3.9
 CMD ["gunicorn", "--bind", "0.0.0.0:8000", "myproject.wsgi:application"]
