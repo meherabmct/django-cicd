@@ -4,4 +4,4 @@ from django.shortcuts import render
 from django.http import HttpResponse
 
 def home(request):
-    return HttpResponse("Hello, Bangladesh 2.0")
+    return HttpResponse("Hello, Bangladesh 2.0 and Auto ECS Deploy")
