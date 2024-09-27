@@ -1,0 +1,86 @@
+name: Deploy to ECS with Custom Tag and Image Scanning
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+   build:
+
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 4
+      matrix:
+        python-version: [3.9]
+        
+  deploy:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the code
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up AWS CLI
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      # Step 3: Log in to Amazon ECR
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Step 4: Set custom image tag (e.g., 1.0.2)
+      - name: Set image tag
+        id: image_tag
+        run: echo "IMAGE_TAG=$(git describe --tags --abbrev=0 || echo latest)" >> $GITHUB_ENV
+
+      # Step 5: Build Docker image
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=${{ env.IMAGE_TAG }}
+          REPO_NAME=${{ secrets.ECR_REPOSITORY }}
+          docker build -t $REPO_NAME:$IMAGE_TAG .
+
+      # Step 6: Scan Docker Image for Vulnerabilities using Trivy
+      - name: Scan Docker image
+        id: scan
+        uses: aquasecurity/trivy-action@v0.5.0
+        with:
+          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          format: 'table'
+
+      # Step 7: Push Docker image to ECR
+      - name: Push Docker image to ECR
+        run: |
+          IMAGE_TAG=${{ env.IMAGE_TAG }}
+          REPO_NAME=${{ secrets.ECR_REPOSITORY }}
+          aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+          docker tag $REPO_NAME:$IMAGE_TAG ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/$REPO_NAME:$IMAGE_TAG
+          docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/$REPO_NAME:$IMAGE_TAG
+
+      # Step 8: Update ECS Service with new image
+      - name: Deploy to ECS
+        run: |
+          ECS_CLUSTER=${{ secrets.ECS_CLUSTER }}
+          ECS_SERVICE=${{ secrets.ECS_SERVICE }}
+          IMAGE_TAG=${{ env.IMAGE_TAG }}
+          REPO_NAME=${{ secrets.ECR_REPOSITORY }}
+          
+          TASK_DEFINITION=$(aws ecs describe-task-definition --task-definition $ECS_SERVICE --region ${{ secrets.AWS_REGION }})
+          
+          # Update ECS Task Definition with the new image
+          NEW_TASK_DEF=$(echo $TASK_DEFINITION | jq --arg IMAGE "$REPO_NAME:$IMAGE_TAG" '.taskDefinition | .containerDefinitions[0].image = $IMAGE | .taskDefinitionArn = null | .revision = null | .status = null | .requiresAttributes = null | .registeredAt = null | .registeredBy = null | .compatibilities = null | .requiresCompatibilities = null')
+
+          # Register the new task definition
+          NEW_TASK_DEF_ARN=$(echo $NEW_TASK_DEF | aws ecs register-task-definition --cli-input-json file://<(echo $NEW_TASK_DEF) --region ${{ secrets.AWS_REGION }} --output text --query 'taskDefinition.taskDefinitionArn')
+
+          # Update the ECS service with the new task definition
+          aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --task-definition $NEW_TASK_DEF_ARN --region ${{ secrets.AWS_REGION }}
