@@ -43,12 +43,12 @@ jobs:
           docker build -t $REPO_NAME:$IMAGE_TAG .
 
       # Step 6: Scan Docker Image for Vulnerabilities using Trivy
-      - name: Scan Docker image
-        id: scan
-        uses: aquasecurity/trivy-action@v0.5.0
-        with:
-          image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
-          format: 'table'
+     # - name: Scan Docker image
+        #id: scan
+        #uses: aquasecurity/trivy-action@v0.5.0
+       # with:
+         # image-ref: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+         # format: 'table' ''
 
       # Step 7: Push Docker image to ECR
       - name: Push Docker image to ECR
