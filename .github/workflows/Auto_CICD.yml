@@ -7,14 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-   build:
-
-    runs-on: ubuntu-latest
-    strategy:
-      max-parallel: 4
-      matrix:
-        python-version: [3.9]
-        
+  
   deploy:
     name: Deploy to ECS
     runs-on: ubuntu-latest
